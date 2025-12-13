@@ -4,14 +4,15 @@ WORKDIR /app
 
 COPY . .
 
-ARG GRAFANA_URL
-ARG GRAFANA_TOKEN
-
-RUN CGO_ENABLED=0 GOOS=linux go build -o calc-pi main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o boid main.go
 
 
 FROM alpine:latest
 
-COPY --from=builder /app/calc-pi /
+WORKDIR /
 
-CMD ["./calc-pi"]
+COPY --from=builder /app/boid /
+
+RUN apk add --no-cache ca-certificates
+
+CMD ["./boid"]

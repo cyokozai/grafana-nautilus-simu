@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boids-simulation
+  namespace: boids-simu
+  labels:
+    app: boids-simulation
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: boids-simulation
+  template:
+    metadata:
+      labels:
+        app: boids-simulation
+    spec:
+      containers:
+        - name: boids-simulation
+          image: ghcr.io/cyokozai/grafana-nautilus-simu:latest
+          imagePullPolicy: Always
+          env:
+            - name: GRAFANA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-url
+                  key: url
+            - name: GRAFANA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-token
+                  key: token
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
