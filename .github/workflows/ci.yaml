@@ -31,7 +31,9 @@ jobs:
           cache: true
 
       - name: Run Go Test
-        run: go test -v ./...
+        with:
+            working-directory: ./src
+        run: go test -v .
 
       # --- 2. Dockerイメージのビルドとプッシュ ---
       - name: Login to GitHub Container Registry
