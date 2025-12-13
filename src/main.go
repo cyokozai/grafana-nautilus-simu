@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+
 type Boid struct {
 	ID    string  `json:"id"`
 	X     float64 `json:"x"`
@@ -27,16 +28,13 @@ type Payload struct {
 	Boids     []Boid `json:"boids"`
 }
 
-var grafanaURL   string = os.Getenv("GRAFANA_URL")
-var grafanaToken string = os.Getenv("GRAFANA_TOKEN")
+const PopulationSize = 100
+const Margin         = 0.1
+const TurnFactor     = 0.001
+const SpeedLimit     = 0.2
 
-const windowWidth  float64 = 896			/ 2.0
-const windowHeight float64 = 597			/ 2.0
-
-const populationSize int = 100
-const margin 		 float64 = 0.1
-const turnFactor float64 = 0.001
-const speedLimit float64 = 0.2
+var	grafanaURL   = os.Getenv("GRAFANA_URL")
+var grafanaToken = os.Getenv("GRAFANA_TOKEN")
 
 
 func main() {
@@ -44,50 +42,27 @@ func main() {
 	defer ticker.Stop()
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	boids := make([]Boid, populationSize)
+	boids := make([]Boid, PopulationSize)
+
 	for i := range boids {
 		angle := random.Float64() * 2.0 * math.Pi
-		speed := 0.005 + random.Float64() * 0.005
+		speed := 0.005 + random.Float64()*0.005
 		boids[i] = Boid{
-			ID:    "boid-" + fmt.Sprintf("%03d", i),
-			X:     (random.Float64()*2.0 - 1.0) * windowWidth,
-			Y:     (random.Float64()*2.0 - 1.0) * windowHeight,
+			ID:    fmt.Sprintf("boid-%03d", i),
+			X:     random.Float64()*2.0 - 1.0,
+			Y:     random.Float64()*2.0 - 1.0,
 			Angle: angle * 180.0 / math.Pi,
 			Speed: speed,
 			Vx:    math.Cos(angle) * speed,
 			Vy:    math.Sin(angle) * speed,
 		}
 	}
-	
-	log.Printf("Starting Grafana Nautiluses Simulation with %d boids...", populationSize)
+
+	log.Printf("Starting Simulation with %d boids...", PopulationSize)
 
 	for t := range ticker.C {
 		for i := range boids {
-			b := &boids[i]
-
-			b.X, b.Y = b.X + b.Vx, b.Y + b.Vy
-
-			if b.X < -1.0 * windowWidth + margin * windowWidth {
-				b.Vx += turnFactor
-			}
-			if b.X > 1.0 * windowWidth - margin * windowWidth {
-				b.Vx -= turnFactor
-			}
-			if b.Y < -1.0 * windowHeight + margin * windowHeight {
-				b.Vy += turnFactor
-			}
-			if b.Y > 1.0 * windowHeight - margin * windowHeight {
-				b.Vy -= turnFactor
-			}
-
-			speed := math.Sqrt(b.Vx * b.Vx + b.Vy * b.Vy)
-			if speed > speedLimit {
-				b.Vx, b.Vy = (b.Vx / speed) * speedLimit, (b.Vy / speed) * speedLimit
-			}
-
-			rad 		:= math.Atan2(b.Vy, b.Vx)
-			degrees := rad * 180 / math.Pi
-			b.Angle	 = degrees
+			UpdateBoid(&boids[i])
 		}
 
 		payloadData := Payload{
@@ -100,10 +75,41 @@ func main() {
 }
 
 
-func postAnnotation(p Payload) {
-	wrapper := map[string]interface{}{
-		"data": p,
+func UpdateBoid(b *Boid) {
+	b.X, b.Y = b.X+b.Vx, b.Y+b.Vy
+
+	if b.X < -1.0 + Margin {
+		b.Vx += TurnFactor
 	}
+	if b.X > 1.0 - Margin {
+		b.Vx -= TurnFactor
+	}
+	if b.Y < -1.0 + Margin {
+		b.Vy += TurnFactor
+	}
+	if b.Y > 1.0 - Margin {
+		b.Vy -= TurnFactor
+	}
+
+	speed := math.Sqrt(b.Vx*b.Vx + b.Vy*b.Vy)
+	if speed > SpeedLimit {
+		ratio := SpeedLimit / speed
+		b.Vx *= ratio
+		b.Vy *= ratio
+	}
+
+	rad := math.Atan2(b.Vy, b.Vx)
+	b.Angle = rad * 180 / math.Pi
+}
+
+
+func postAnnotation(p Payload) {
+	if grafanaURL == "" {
+		log.Println("GRAFANA_URL is not set")
+
+		return
+	}
+	wrapper := map[string]interface{}{"data": p}
 	jsonData, err := json.Marshal(wrapper)
 	if err != nil {
 		log.Println("Error marshaling JSON:", err)
@@ -111,18 +117,14 @@ func postAnnotation(p Payload) {
 		return
 	}
 
-	req, err := http.NewRequest(
-		"POST",
-		grafanaURL + "/api/live/push/nautilus_stream",
-		bytes.NewBuffer(jsonData),
-	)
+	req, err := http.NewRequest("POST", grafanaURL+"/api/live/push/nautilus_stream", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Println("Error creating request:", err)
 
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer " + grafanaToken)
+	req.Header.Set("Authorization", "Bearer "+grafanaToken)
 
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Do(req)
