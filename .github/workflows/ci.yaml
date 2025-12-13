@@ -31,8 +31,7 @@ jobs:
           cache: true
 
       - name: Run Go Test
-        with:
-            working-directory: ./src
+        working-directory: ./src
         run: go test -v .
 
       # --- 2. Dockerイメージのビルドとプッシュ ---
