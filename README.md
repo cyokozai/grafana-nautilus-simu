@@ -23,5 +23,5 @@ Grafana Canvas
 	参考
 	----
 
-	- [【フリー素材】宇宙の背景イラスト](https://aipict.com/utility_graphics/universe/)
-    - [これを使った](https://aipict.com/wp-content/uploads/universe_space04.png)
+	-	[【フリー素材】宇宙の背景イラスト](https://aipict.com/utility_graphics/universe/)
+	-	[これを使った](https://aipict.com/wp-content/uploads/universe_space04.png)
