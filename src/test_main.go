@@ -1,4 +1,4 @@
-package main
+package test_main
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"testing"
 )
 
 type Boid struct {
@@ -107,8 +109,6 @@ func postAnnotation(p Payload) {
 	jsonData, err := json.Marshal(wrapper)
 	if err != nil {
 		log.Println("Error marshaling JSON:", err)
-
-		return
 	}
 
 	req, err := http.NewRequest(
@@ -118,8 +118,6 @@ func postAnnotation(p Payload) {
 	)
 	if err != nil {
 		log.Println("Error creating request:", err)
-
-		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer " + grafanaToken)
@@ -128,8 +126,6 @@ func postAnnotation(p Payload) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Error sending request:", err)
-
-		return
 	}
 	defer resp.Body.Close()
 }
