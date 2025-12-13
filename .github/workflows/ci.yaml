@@ -42,7 +42,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 3. Dockerイメージのビルドとプッシュ ---
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -53,7 +52,7 @@ jobs:
 
       - name: Change docker image
         uses: mikefarah/yq@master
-        with:
+        with:^
           cmd: yq '.spec.template.spec.containers[0].image = env(IMAGE)' -i ${{ env.WORK_DIR }}manifest/sync/deployment.yaml
       
       - name: Commit
