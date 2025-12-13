@@ -1,0 +1,13 @@
+<mxfile host="65bd71144e">
+    <diagram name="ページ1" id="uwn_j-nVzs7NrRnso1km">
+        <mxGraphModel dx="2880" dy="2965" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3300" pageHeight="4681" math="1" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Grafana_logo.svg/2005px-Grafana_logo.svg.png;clipPath=inset(0% 13.27% 22.33% 12.93%);" vertex="1" parent="1">
+                    <mxGeometry x="80" y="80" width="1043.0901287553647" height="1120" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
