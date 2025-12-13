@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - "main"
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read   # ソースコードの読み取り
+      packages: write  # GHCRへの書き込み権限
+
+    env:
+      REGISTRY: ghcr.io
+      # イメージ名はリポジトリ名 + SHAハッシュを使用
+      IMAGE: "ghcr.io/${{ github.repository }}:${{ github.sha }}"
+      
+      # GitOps用設定 (参照元のリポジトリに合わせています)
+      MANIFEST_REPO: "nekko-lab/tsudanuma25-hp"
+      MANIFEST_REPO_PATH: "./manifest-repo"
+      # 【注意】ここを実際のDeploymentマニフェストのパスに書き換えてください
+      TARGET_MANIFEST_FILE: "container/manifest/sync/boids-simulation-deployment.yaml"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25' 
+          cache: true
+
+      - name: Run Go Test
+        run: go test -v ./...
+
+      # --- 2. Dockerイメージのビルドとプッシュ ---
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # GoプロジェクトのルートにDockerfileがある場合
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}
+
+      # --- 3. マニフェストリポジトリの更新 (GitOps) ---
+      - name: Checkout Manifest Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MANIFEST_REPO }}
+          # 別のリポジトリにコミットするため、権限のあるPAT(Personal Access Token)が必要
+          token: ${{ secrets.MANIFEST_REPO_PAT }}
+          path: ${{ env.MANIFEST_REPO_PATH }}
+      
+      - name: Update Image Tag in Manifest
+        uses: mikefarah/yq@master
+        with:
+          # Deploymentマニフェスト内のimageタグを新しいSHAに書き換え
+          # ※Deploymentの構造に合わせて .spec.template.spec.containers[0].image などを調整してください
+          cmd: yq '.spec.template.spec.containers[0].image = env(IMAGE)' -i ${{ env.MANIFEST_REPO_PATH }}/${{ env.TARGET_MANIFEST_FILE }}
+          
+      - name: Commit and Push to Manifest Repo
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          repository: ${{ env.MANIFEST_REPO_PATH }}
+          commit_message: "ci(boids): Update image tag to ${{ github.sha }}"
