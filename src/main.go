@@ -1,25 +1,37 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
-	"math"
-	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
+	"math"
+	"math/rand/v2"
+
+	"github.com/gorilla/websocket"
 )
 
+
 type Frame struct {
-	Fields []Field        `json:"fields"`
+	Type string       `json:"type"`
+	Data FramePayload `json:"data"`
+}
+
+type FramePayload struct {
+	Fields []FrameField    `json:"fields"`
 	Values [][]interface{} `json:"values"`
 }
 
-type Field struct {
+type FrameField struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
+}
+
+type Payload struct {
+	Timestamp int64  `json:"timestamp"`
+	Boids     []Boid `json:"boids"`
 }
 
 type Boid struct {
@@ -33,48 +45,35 @@ type Boid struct {
 	Vy    float64 `json:"-"`
 }
 
-type Payload struct {
-	Timestamp int64  `json:"timestamp"`
-	Boids     []Boid `json:"boids"`
-}
-
 const PopulationSize = 100
 const Margin         = 0.1
 const TurnFactor     = 0.001
 const SpeedLimit     = 0.2
 
-const StreamName = "boids.v1.positions"
-var	grafanaURL   = os.Getenv("GRAFANA_URL")
-var grafanaToken = os.Getenv("GRAFANA_TOKEN")
-var httpClient   = &http.Client{Timeout: 5 * time.Second}
+var	GrafanaURL   = os.Getenv("GRAFANA_URL")
+var GrafanaToken = os.Getenv("GRAFANA_TOKEN")
+var HttpClient   = &http.Client{Timeout: 5 * time.Second}
+
 
 func main() {
-	if grafanaURL == "" || grafanaToken == "" {
-		log.Fatal("GRAFANA_URL or GRAFANA_TOKEN is not set")
+	conn, err := connectGrafanaLive()
+	if err != nil {
+		log.Fatal("connect error:", err)
+	}
+	defer conn.Close()
+
+	stream := "stream/boids.v1.positions"
+	if err := subscribe(conn, stream); err != nil {
+		log.Fatal("subscribe error:", err)
 	}
 
-	ticker := time.NewTicker(50 * time.Millisecond)
+	log.Println("Subscribed to", stream)
+
+	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	boids  := make([]Boid, PopulationSize)
-
-	for i := range boids {
-		angle := random.Float64() * 2.0 * math.Pi
-		speed := 0.005 + random.Float64()*0.005
-		boids[i] = Boid{
-			Time:	 time.Now().UnixMilli(),
-			ID:    fmt.Sprintf("boid-%03d", i),
-			X:     random.Float64()*2.0 - 1.0,
-			Y:     random.Float64()*2.0 - 1.0,
-			Angle: angle * 180.0 / math.Pi,
-			Speed: speed,
-			Vx:    math.Cos(angle) * speed,
-			Vy:    math.Sin(angle) * speed,
-		}
-	}
-
-	log.Printf("Starting Simulation with %d boids...", PopulationSize)
+	boids  := initBoids(random)
 
 	for t := range ticker.C {
 		for i := range boids {
@@ -82,34 +81,78 @@ func main() {
 			boids[i].Time = t.UnixMilli()
 		}
 
-		flame := buildFrame(t, boids)
-		postFrame(flame)
+		frame := boidsToFramePayload(boids, t.UnixMilli())
+
+		msg := map[string]interface{}{
+			"type":    "publish",
+			"channel": stream,
+			"data":    frame,
+		}
+
+		if err := conn.WriteJSON(msg); err != nil {
+			log.Println("write error:", err)
+		}
 	}
 }
 
 
-func buildFrame(t time.Time, boids []Boid) Frame {
-	values := make([][]interface{}, 0, len(boids))
-	for _, b := range boids {
-		values = append(values, []interface{}{
-			t.UnixMilli(),
-			b.ID,
-			b.X,
-			b.Y,
-			b.Angle,
-		})
+func initBoids(r *rand.Rand) []Boid {
+	boids := make([]Boid, PopulationSize)
+	now := time.Now().UnixMilli()
+
+	for i := range boids {
+		angle := r.Float64() * 2 * math.Pi
+		speed := 0.005 + r.Float64()*0.005
+
+		boids[i] = Boid{
+			Time:  now,
+			ID:    fmt.Sprintf("boid-%03d", i),
+			X:     r.Float64()*2.0 - 1.0,
+			Y:     r.Float64()*2.0 - 1.0,
+			Angle: angle * 180 / math.Pi,
+			Speed: speed,
+			Vx:    math.Cos(angle) * speed,
+			Vy:    math.Sin(angle) * speed,
+		}
 	}
 
-	return Frame{
-		Fields: []Field{
-			{Name: "time", Type: "time"},
-			{Name: "id", Type: "string"},
-			{Name: "x", Type: "number"},
-			{Name: "y", Type: "number"},
-			{Name: "rotation", Type: "number"},
-		},
-		Values: values,
+	return boids
+}
+
+
+func connectGrafanaLive() (*websocket.Conn, error) {
+	u, err := url.Parse(GrafanaURL)
+	if err != nil {
+		log.Println("Error parsing Grafana URL:", err)
+
+		return nil, err
 	}
+
+	u.Scheme = map[string]string{
+		"http":  "ws",
+		"https": "wss",
+	}[u.Scheme]
+	u.Path = "/api/live/ws/"
+
+	header := http.Header{}
+	header.Set("Authorization", "Bearer "+GrafanaToken)
+	header.Set("X-Grafana-Org-Id", "1")
+
+	log.Printf("Connecting to %s", u.String())
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+
+	return conn, err
+}
+
+
+func subscribe(conn *websocket.Conn, stream string) error {
+	msg := map[string]interface{}{
+		"type": "subscribe",
+		"channel": stream,
+	}
+
+	return conn.WriteJSON(msg)
 }
 
 
@@ -141,34 +184,30 @@ func UpdateBoid(b *Boid) {
 }
 
 
-func postFrame(frame Frame) {
-	jsonData, err := json.Marshal(frame)
-	if err != nil {
-		log.Println("Error marshaling JSON:", err)
+func boidsToFramePayload(boids []Boid, ts int64) Frame {
+	values := make([][]interface{}, 0, len(boids))
 
-		return
+	for _, b := range boids {
+		values = append(values, []interface{}{
+			ts, 
+			b.ID,
+			b.X,
+			b.Y,
+			b.Angle,
+		})
 	}
 
-	req, err := http.NewRequest(
-		"POST",
-		grafanaURL+"/api/live/push/boids.v1.positions",
-		bytes.NewBuffer(jsonData),
-	)
-	if err != nil {
-		log.Println("Error creating request:", err)
-
-		return
+	return Frame{
+		Type: "dataframe",
+		Data: FramePayload{
+			Fields: []FrameField{
+				{Name: "time", Type: "time"},
+				{Name: "id", Type: "string"},
+				{Name: "x", Type: "number"},
+				{Name: "y", Type: "number"},
+				{Name: "rotation", Type: "number"},
+			},
+			Values: values,
+		},
 	}
-	req.Header.Set("Authorization", "Bearer "+grafanaToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Grafana-Org-Id", "1")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Println("Error sending request:", err)
-
-		return
-	}
-	resp.Body.Close()
 }
-
