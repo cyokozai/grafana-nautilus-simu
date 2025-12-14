@@ -14,12 +14,7 @@ import (
 )
 
 
-type Frame struct {
-	// Type string       `json:"type"`
-	Data FramePayload `json:"data"`
-}
-
-type FramePayload struct {
+type DataFrame struct {
 	Fields []FrameField    `json:"fields"`
 	Values [][]interface{} `json:"values"`
 }
@@ -192,7 +187,7 @@ func UpdateBoid(b *Boid) {
 }
 
 
-func boidsToFramePayload(boids []Boid, ts int64) Frame {
+func boidsToFramePayload(boids []Boid, ts int64) DataFrame {
 	values := make([][]interface{}, 0, len(boids))
 
 	for _, b := range boids {
@@ -205,17 +200,14 @@ func boidsToFramePayload(boids []Boid, ts int64) Frame {
 		})
 	}
 
-	return Frame{
-		// Type: "dataframe",
-		Data: FramePayload{
-			Fields: []FrameField{
-				{Name: "time", Type: "time"},
-				{Name: "id", Type: "string"},
-				{Name: "x", Type: "number"},
-				{Name: "y", Type: "number"},
-				{Name: "rotation", Type: "number"},
-			},
-			Values: values,
+	return DataFrame{
+		Fields: []FrameField{
+			{Name: "time", Type: "time"},
+			{Name: "id", Type: "string"},
+			{Name: "x", Type: "number"},
+			{Name: "y", Type: "number"},
+			{Name: "rotation", Type: "number"},
 		},
+		Values: values,
 	}
 }
