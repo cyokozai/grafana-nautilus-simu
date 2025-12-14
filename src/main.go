@@ -206,7 +206,7 @@ func boidsToFramePayload(boids []Boid, ts int64) Frame {
 	}
 
 	return Frame{
-		Type: "dataframe",
+		// Type: "dataframe",
 		Data: FramePayload{
 			Fields: []FrameField{
 				{Name: "time", Type: "time"},
