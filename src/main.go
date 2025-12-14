@@ -14,6 +14,7 @@ import (
 
 
 type Boid struct {
+	Time  int64   `json:"time"`
 	ID    string  `json:"id"`
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
@@ -48,6 +49,7 @@ func main() {
 		angle := random.Float64() * 2.0 * math.Pi
 		speed := 0.005 + random.Float64()*0.005
 		boids[i] = Boid{
+			Time:	 time.Now().UnixMilli(),
 			ID:    fmt.Sprintf("boid-%03d", i),
 			X:     random.Float64()*2.0 - 1.0,
 			Y:     random.Float64()*2.0 - 1.0,
@@ -63,6 +65,7 @@ func main() {
 	for t := range ticker.C {
 		for i := range boids {
 			UpdateBoid(&boids[i])
+			boids[i].Time = t.UnixMilli()
 		}
 
 		payloadData := Payload{
