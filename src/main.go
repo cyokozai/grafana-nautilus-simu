@@ -15,7 +15,7 @@ import (
 
 
 type Frame struct {
-	Type string       `json:"type"`
+	// Type string       `json:"type"`
 	Data FramePayload `json:"data"`
 }
 
@@ -47,7 +47,7 @@ const SpeedLimit     = 0.2
 
 var	GrafanaURL   = os.Getenv("GRAFANA_URL")
 var GrafanaToken = os.Getenv("GRAFANA_TOKEN")
-const Stream string = "stream/boids.v1.positions"
+const Stream     = "stream/boids.v1.positions"
 
 
 func main() {
@@ -56,9 +56,8 @@ func main() {
 		log.Fatal("connect error:", err)
 	}
 	defer conn.Close()
+	go readLoop(conn)
 	go startPing(conn)
-
-	log.Println("Subscribed to", Stream)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -85,6 +84,17 @@ func main() {
 			log.Println("write error:", err)
 
 			break
+		}
+	}
+}
+
+
+func readLoop(conn *websocket.Conn) {
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			log.Println("read error:", err)
+
+			return
 		}
 	}
 }
