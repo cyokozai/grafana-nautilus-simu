@@ -76,7 +76,7 @@ func main() {
 
 		msg := map[string]interface{}{
 			"type":    "publish",
-			"channel": stream,
+			"channel": "stream/boids.v1.positions",
 			"data":    frame,
 		}
 
@@ -151,16 +151,6 @@ func connectGrafanaLive() (*websocket.Conn, error) {
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 
 	return conn, err
-}
-
-
-func subscribe(conn *websocket.Conn, stream string) error {
-	msg := map[string]interface{}{
-		"type": "subscribe",
-		"channel": stream,
-	}
-
-	return conn.WriteJSON(msg)
 }
 
 
