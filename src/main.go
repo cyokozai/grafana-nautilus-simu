@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+type Frame struct {
+	Fields []Field        `json:"fields"`
+	Values [][]interface{} `json:"values"`
+}
+
+type Field struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
 
 type Boid struct {
 	Time  int64   `json:"time"`
@@ -34,16 +43,21 @@ const Margin         = 0.1
 const TurnFactor     = 0.001
 const SpeedLimit     = 0.2
 
+const StreamName = "boids.v1.positions"
 var	grafanaURL   = os.Getenv("GRAFANA_URL")
 var grafanaToken = os.Getenv("GRAFANA_TOKEN")
-
+var httpClient   = &http.Client{Timeout: 5 * time.Second}
 
 func main() {
-	ticker := time.NewTicker(10 * time.Millisecond)
+	if grafanaURL == "" || grafanaToken == "" {
+		log.Fatal("GRAFANA_URL or GRAFANA_TOKEN is not set")
+	}
+
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	boids := make([]Boid, PopulationSize)
+	boids  := make([]Boid, PopulationSize)
 
 	for i := range boids {
 		angle := random.Float64() * 2.0 * math.Pi
@@ -68,12 +82,33 @@ func main() {
 			boids[i].Time = t.UnixMilli()
 		}
 
-		payloadData := Payload{
-			Timestamp: t.UnixMilli(),
-			Boids:     boids,
-		}
+		flame := buildFrame(t, boids)
+		postFrame(flame)
+	}
+}
 
-		go postAnnotation(payloadData)
+
+func buildFrame(t time.Time, boids []Boid) Frame {
+	values := make([][]interface{}, 0, len(boids))
+	for _, b := range boids {
+		values = append(values, []interface{}{
+			t.UnixMilli(),
+			b.ID,
+			b.X,
+			b.Y,
+			b.Angle,
+		})
+	}
+
+	return Frame{
+		Fields: []Field{
+			{Name: "time", Type: "time"},
+			{Name: "id", Type: "string"},
+			{Name: "x", Type: "number"},
+			{Name: "y", Type: "number"},
+			{Name: "rotation", Type: "number"},
+		},
+		Values: values,
 	}
 }
 
@@ -106,35 +141,34 @@ func UpdateBoid(b *Boid) {
 }
 
 
-func postAnnotation(p Payload) {
-	if grafanaURL == "" {
-		log.Println("GRAFANA_URL is not set")
-
-		return
-	}
-	wrapper := map[string]interface{}{"data": p}
-	jsonData, err := json.Marshal(wrapper)
+func postFrame(frame Frame) {
+	jsonData, err := json.Marshal(frame)
 	if err != nil {
 		log.Println("Error marshaling JSON:", err)
 
 		return
 	}
 
-	req, err := http.NewRequest("POST", grafanaURL+"/api/live/push/boids_stream", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest(
+		"POST",
+		grafanaURL+"/api/live/push/boids.v1.positions",
+		bytes.NewBuffer(jsonData),
+	)
 	if err != nil {
 		log.Println("Error creating request:", err)
 
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+grafanaToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Grafana-Org-Id", "1")
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Println("Error sending request:", err)
 
 		return
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 }
+
