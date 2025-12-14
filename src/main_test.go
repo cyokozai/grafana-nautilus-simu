@@ -8,8 +8,10 @@ import (
 // 座標更新のテスト
 func TestUpdateBoid_Move(t *testing.T) {
 	b := Boid{
-		X: 0, Y: 0,
-		Vx: 0.01, Vy: 0.005,
+		X:  0,
+		Y:  0,
+		Vx: 0.01,
+		Vy: 0.005,
 	}
 
 	// Act
@@ -24,28 +26,26 @@ func TestUpdateBoid_Move(t *testing.T) {
 	}
 }
 
-// 壁際での反転テスト
-func TestUpdateBoid_WallBounce(t *testing.T) {
-	boundary := 1.0 - Margin
-
+// 壁際での進行方向補正テスト
+func TestUpdateBoid_WallTurn(t *testing.T) {
 	b := Boid{
-		X:  boundary + 0.01,
+		X:  1.0 - Margin + 0.001, // すでに境界を越えている
 		Y:  0,
 		Vx: 0.005,
 		Vy: 0,
 	}
+
 	initialVx := b.Vx
 
 	// Act
 	UpdateBoid(&b)
 
 	// Assert
-	expectedVx := initialVx - TurnFactor // 反転による速度変化
-
 	if b.Vx >= initialVx {
-		t.Errorf("Expected Vx to decrease (turn back), but got %f >= %f", b.Vx, initialVx)
+		t.Errorf("Expected Vx to decrease after wall turn, got %f >= %f", b.Vx, initialVx)
 	}
-	
+
+	expectedVx := initialVx - TurnFactor
 	if math.Abs(b.Vx-expectedVx) > 1e-9 {
 		t.Errorf("Expected Vx %f, got %f", expectedVx, b.Vx)
 	}
@@ -54,16 +54,18 @@ func TestUpdateBoid_WallBounce(t *testing.T) {
 // 角度更新のテスト
 func TestUpdateBoid_Rotation(t *testing.T) {
 	b := Boid{
-		X: 0, Y: 0,
-		Vx: 0, Vy: 0.01,
+		X:  0,
+		Y:  0,
+		Vx: 0,
+		Vy: 0.01,
 	}
 
 	// Act
 	UpdateBoid(&b)
 
 	// Assert
-	expectedAngle := 90.0 // 上向きのベクトル
-	
+	expectedAngle := 90.0
+
 	if math.Abs(b.Angle-expectedAngle) > 1e-9 {
 		t.Errorf("Expected Angle %f, got %f", expectedAngle, b.Angle)
 	}
