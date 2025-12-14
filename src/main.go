@@ -29,11 +29,6 @@ type FrameField struct {
 	Type string `json:"type"`
 }
 
-type Payload struct {
-	Timestamp int64  `json:"timestamp"`
-	Boids     []Boid `json:"boids"`
-}
-
 type Boid struct {
 	Time  int64   `json:"time"`
 	ID    string  `json:"id"`
@@ -45,14 +40,13 @@ type Boid struct {
 	Vy    float64 `json:"-"`
 }
 
-const PopulationSize = 100
+const PopulationSize = 20
 const Margin         = 0.1
 const TurnFactor     = 0.001
 const SpeedLimit     = 0.2
 
 var	GrafanaURL   = os.Getenv("GRAFANA_URL")
 var GrafanaToken = os.Getenv("GRAFANA_TOKEN")
-var HttpClient   = &http.Client{Timeout: 5 * time.Second}
 
 
 func main() {
@@ -61,15 +55,12 @@ func main() {
 		log.Fatal("connect error:", err)
 	}
 	defer conn.Close()
+	go startPing(conn)
 
 	stream := "stream/boids.v1.positions"
-	if err := subscribe(conn, stream); err != nil {
-		log.Fatal("subscribe error:", err)
-	}
-
 	log.Println("Subscribed to", stream)
 
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
@@ -89,9 +80,26 @@ func main() {
 			"data":    frame,
 		}
 
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := conn.WriteJSON(msg); err != nil {
 			log.Println("write error:", err)
+
+			break
 		}
+	}
+}
+
+
+func startPing(conn *websocket.Conn) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		conn.WriteControl(
+			websocket.PingMessage,
+			[]byte{},
+			time.Now().Add(5*time.Second),
+		)
 	}
 }
 
