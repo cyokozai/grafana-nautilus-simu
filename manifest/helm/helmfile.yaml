@@ -19,6 +19,7 @@ releases:
             targetPort: 3000
           grafana.ini:
             live:
+              enabled: true
               allowed_origins: "*"
               max_connections: 0
       - prometheusOperator:
