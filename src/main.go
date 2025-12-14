@@ -47,6 +47,7 @@ const SpeedLimit     = 0.2
 
 var	GrafanaURL   = os.Getenv("GRAFANA_URL")
 var GrafanaToken = os.Getenv("GRAFANA_TOKEN")
+const Stream string = "stream/boids.v1.positions"
 
 
 func main() {
@@ -57,8 +58,7 @@ func main() {
 	defer conn.Close()
 	go startPing(conn)
 
-	stream := "stream/boids.v1.positions"
-	log.Println("Subscribed to", stream)
+	log.Println("Subscribed to", Stream)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -76,7 +76,7 @@ func main() {
 
 		msg := map[string]interface{}{
 			"type":    "publish",
-			"channel": stream,
+			"channel": Stream,
 			"data":    frame,
 		}
 
@@ -151,16 +151,6 @@ func connectGrafanaLive() (*websocket.Conn, error) {
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 
 	return conn, err
-}
-
-
-func subscribe(conn *websocket.Conn, stream string) error {
-	msg := map[string]interface{}{
-		"type": "subscribe",
-		"channel": stream,
-	}
-
-	return conn.WriteJSON(msg)
 }
 
 
