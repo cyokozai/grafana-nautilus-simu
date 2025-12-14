@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
-	"math"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
+	"math"
+	"math/rand/v2"
 
 	"github.com/gorilla/websocket"
 )
@@ -35,47 +35,57 @@ type Boid struct {
 	Vy    float64 `json:"-"`
 }
 
-const PopulationSize = 20
-const Margin = 0.1
-const TurnFactor = 0.001
-const SpeedLimit = 0.2
 
-var GrafanaURL = os.Getenv("GRAFANA_URL")
-var GrafanaToken = os.Getenv("GRAFANA_TOKEN")
+const	PopulationSize = 20
+const	Margin         = 0.1
+const	TurnFactor     = 0.001
+const	SpeedLimit     = 0.2
 
-const Stream = "stream/boids.v1.positions"
+var	GrafanaURL   = os.Getenv("GRAFANA_URL")
+var	GrafanaToken = os.Getenv("GRAFANA_TOKEN")
+const Stream     = "stream/boids.v1.positions"
+
 
 func main() {
-	if GrafanaURL == "" || GrafanaToken == "" {
-		log.Fatal("GRAFANA_URL and GRAFANA_TOKEN must be set")
-	}
-
 	conn, err := connectGrafanaLive()
 	if err != nil {
-		log.Fatal("connect error:", err)
+		log.Fatal(err)
 	}
 	defer conn.Close()
 
-	go readLoop(conn)
+	subscribed := make(chan struct{})
+
+	go readLoop(conn, subscribed)
 	go startPing(conn)
 
-	ticker := time.NewTicker(50 * time.Millisecond)
+	sub := map[string]interface{}{
+		"action":  "subscribe",
+		"channel": Stream,
+	}
+
+	if err := conn.WriteJSON(sub); err != nil {
+		log.Fatal("subscribe error:", err)
+	}
+
+	<-subscribed
+	log.Println("Subscribed successfully, start publishing")
+
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	boids := initBoids(random)
 
-	log.Println("Starting simulation loop...")
-
 	for t := range ticker.C {
-		now := t.UnixMilli()
+		ts := t.UnixMilli()
+
 		for i := range boids {
 			UpdateBoid(&boids[i])
-			boids[i].Time = now
+			boids[i].Time = ts
 		}
 
-		frame := boidsToFramePayload(boids, now)
-		
+		frame := boidsToFramePayload(boids, ts)
+
 		msg := map[string]interface{}{
 			"action":  "publish",
 			"channel": Stream,
@@ -84,45 +94,52 @@ func main() {
 
 		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := conn.WriteJSON(msg); err != nil {
-			log.Println("write error (connection lost?):", err)
-			
-			break
-		}
-	}
-}
+			log.Println("write error:", err)
 
-func readLoop(conn *websocket.Conn) {
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Println("read error:", err)
 			return
 		}
-		
-		log.Printf("recv: %s", message)
 	}
 }
 
+
+func readLoop(conn *websocket.Conn, subscribed chan struct{}) {
+	for {
+		var msg map[string]interface{}
+		if err := conn.ReadJSON(&msg); err != nil {
+			log.Println("read error:", err)
+
+			return
+		}
+
+		// subscribe ACK を検出
+		if msg["type"] == "subscribe" && msg["status"] == "ok" {
+			close(subscribed)
+		}
+	}
+}
+
+
 func startPing(conn *websocket.Conn) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		err := conn.WriteControl(
+		if err := conn.WriteControl(
 			websocket.PingMessage,
 			[]byte{},
 			time.Now().Add(5*time.Second),
-		)
-		if err != nil {
+		); err != nil {
 			log.Println("ping error:", err)
+
 			return
 		}
 	}
 }
 
+
 func initBoids(r *rand.Rand) []Boid {
 	boids := make([]Boid, PopulationSize)
-	now := time.Now().UnixMilli()
+	now   := time.Now().UnixMilli()
 
 	for i := range boids {
 		angle := r.Float64() * 2 * math.Pi
@@ -143,31 +160,39 @@ func initBoids(r *rand.Rand) []Boid {
 	return boids
 }
 
+
 func connectGrafanaLive() (*websocket.Conn, error) {
 	u, err := url.Parse(GrafanaURL)
 	if err != nil {
-		return nil, fmt.Errorf("parsing url: %w", err)
+		log.Println("Error parsing Grafana URL:", err)
+
+		return nil, err
 	}
 
 	switch u.Scheme {
-	case "https":
-		u.Scheme = "wss"
 	case "http":
 		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
 	}
+
 	u.Path = "/api/live/ws"
 
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+GrafanaToken)
+	header.Set("X-Grafana-Org-Id", "1")
 
 	log.Printf("Connecting to %s", u.String())
-
+	
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+
 	return conn, err
 }
 
+
 func UpdateBoid(b *Boid) {
-	b.X, b.Y = b.X+b.Vx, b.Y+b.Vy
+	b.X += b.Vx
+	b.Y += b.Vy
 
 	if b.X < -1.0+Margin {
 		b.Vx += TurnFactor
@@ -189,25 +214,21 @@ func UpdateBoid(b *Boid) {
 		b.Vy *= ratio
 	}
 
-	rad := math.Atan2(b.Vy, b.Vx)
-	b.Angle = rad * 180 / math.Pi
+	b.Angle = math.Atan2(b.Vy, b.Vx) * 180 / math.Pi
 }
 
+
 func boidsToFramePayload(boids []Boid, ts int64) DataFrame {
-	count := len(boids)
+	values := make([][]interface{}, 0, len(boids))
 
-	colTime := make([]interface{}, count)
-	colID := make([]interface{}, count)
-	colX := make([]interface{}, count)
-	colY := make([]interface{}, count)
-	colRot := make([]interface{}, count)
-
-	for i, b := range boids {
-		colTime[i] = ts
-		colID[i] = b.ID
-		colX[i] = b.X
-		colY[i] = b.Y
-		colRot[i] = b.Angle
+	for _, b := range boids {
+		values = append(values, []interface{}{
+			ts,
+			b.ID,
+			b.X,
+			b.Y,
+			b.Angle,
+		})
 	}
 
 	return DataFrame{
@@ -218,12 +239,6 @@ func boidsToFramePayload(boids []Boid, ts int64) DataFrame {
 			{Name: "y", Type: "number"},
 			{Name: "rotation", Type: "number"},
 		},
-		Values: [][]interface{}{
-			colTime,
-			colID,
-			colX,
-			colY,
-			colRot,
-		},
+		Values: values,
 	}
 }
