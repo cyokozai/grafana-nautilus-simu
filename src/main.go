@@ -120,7 +120,7 @@ func postAnnotation(p Payload) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", grafanaURL+"/api/live/push/nautilus_stream", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", grafanaURL+"/api/live/push/boids_stream", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Println("Error creating request:", err)
 
