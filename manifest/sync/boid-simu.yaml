@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: boids-simulation
-          image: ghcr.io/cyokozai/grafana-nautilus-simu:latest
+          image: ghcr.io/cyokozai/grafana-nautilus-simu:7ecb24a8cf05181555624eb71e37e5d449f6acaa
           imagePullPolicy: Always
           env:
             - name: GRAFANA_URL
@@ -48,3 +48,8 @@ metadata:
 data:
   MQTT_BROKER: tcp://mosquitto-svc.mqtt-broker.svc.cluster.local:1883
   MQTT_TOPIC: boids/positions
+spec:
+  template:
+    spec:
+      containers:
+        - image: ghcr.io/cyokozai/grafana-nautilus-simu:7ecb24a8cf05181555624eb71e37e5d449f6acaa
