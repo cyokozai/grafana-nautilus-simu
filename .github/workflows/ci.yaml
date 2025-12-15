@@ -53,7 +53,7 @@ jobs:
       - name: Change docker image
         uses: mikefarah/yq@master
         with:
-          cmd: yq '.spec.template.spec.containers[0].image = env(IMAGE)' -i ${{ env.WORK_DIR }}manifest/sync/deployment.yaml
+          cmd: yq '.spec.template.spec.containers[0].image = env(IMAGE)' -i ${{ env.WORK_DIR }}manifest/sync/boid-simu.yaml
       
       - name: Commit
         uses: stefanzweifel/git-auto-commit-action@v4
