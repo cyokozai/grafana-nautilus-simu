@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
-              name: boids-simulation-config
+                name: boids-simulation-config
           resources:
             requests:
               cpu: "10m"
