@@ -59,21 +59,28 @@ func main() {
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		for i := range boids {
+    ts := t.UnixMilli()
+
+    for i := range boids {
 			UpdateBoid(&boids[i])
-			boids[i].Time = t.UnixMilli()
+			boids[i].Time = ts
 
 			payload, err := json.Marshal(boids[i])
 			if err != nil {
-				log.Println("marshal error:", err)
-
+				log.Println("json marshal error:", err)
+				
 				continue
 			}
 
-			token := client.Publish(MQTTTopic, 0, false, payload)
-			token.Wait()
+			client.Publish(
+				os.Getenv("MQTT_TOPIC"),
+				0,
+				false,
+				payload,
+			)
 		}
 	}
+
 }
 
 // Boidsの初期集団を生成
