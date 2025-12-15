@@ -12,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+
 type Boid struct {
 	Time  int64   `json:"time"`
 	ID    string  `json:"id"`
@@ -22,7 +23,6 @@ type Boid struct {
 	Vx    float64 `json:"-"`
 	Vy    float64 `json:"-"`
 }
-
 
 const PopulationSize = 20
 const Margin         = 0.1
