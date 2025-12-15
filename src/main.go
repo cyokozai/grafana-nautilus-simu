@@ -1,28 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"net/url"
-	"os"
-	"time"
 	"math"
 	"math/rand/v2"
+	"os"
+	"time"
 
-	"github.com/gorilla/websocket"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
-
-
-type DataFrame struct {
-	Fields []FrameField    `json:"fields"`
-	Values [][]interface{} `json:"values"`
-}
-
-type FrameField struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
 
 type Boid struct {
 	Time  int64   `json:"time"`
@@ -36,107 +24,59 @@ type Boid struct {
 }
 
 
-const	PopulationSize = 20
-const	Margin         = 0.1
-const	TurnFactor     = 0.001
-const	SpeedLimit     = 0.2
+const PopulationSize = 20
+const Margin         = 0.1
+const TurnFactor     = 0.001
+const SpeedLimit     = 0.2
 
-var	GrafanaURL   = os.Getenv("GRAFANA_URL")
-var	GrafanaToken = os.Getenv("GRAFANA_TOKEN")
-const Stream     = "stream/boids.v1.positions"
+var MQTTBroker = os.Getenv("MQTT_BROKER")
+var MQTTTopic  = os.Getenv("MQTT_TOPIC")
 
 
 func main() {
-	conn, err := connectGrafanaLive()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-
-	subscribed := make(chan struct{})
-
-	go readLoop(conn, subscribed)
-	go startPing(conn)
-
-	sub := map[string]interface{}{
-		"action":  "subscribe",
-		"channel": Stream,
+	if MQTTBroker == "" || MQTTTopic == "" {
+		log.Fatal("MQTT_BROKER or MQTT_TOPIC is not set")
 	}
 
-	if err := conn.WriteJSON(sub); err != nil {
-		log.Fatal("subscribe error:", err)
+	opts := mqtt.NewClientOptions().
+		AddBroker(MQTTBroker).
+		SetClientID("boids-simulation").
+		SetAutoReconnect(true).
+		SetCleanSession(true)
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatal(token.Error())
 	}
+	defer client.Disconnect(250)
 
-	<-subscribed
-	log.Println("Subscribed successfully, start publishing")
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	log.Println("Connected to MQTT broker")
 
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	boids := initBoids(random)
+	boids  := initBoids(random)
 
-	for t := range ticker.C {
-		ts := t.UnixMilli()
-
-		for i := range boids {
-			UpdateBoid(&boids[i])
-			boids[i].Time = ts
-		}
-
-		frame := boidsToFramePayload(boids, ts)
-
-		msg := map[string]interface{}{
-			"action":  "publish",
-			"channel": Stream,
-			"data":    frame,
-		}
-
-		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := conn.WriteJSON(msg); err != nil {
-			log.Println("write error:", err)
-
-			return
-		}
-	}
-}
-
-
-func readLoop(conn *websocket.Conn, subscribed chan struct{}) {
-	for {
-		var msg map[string]interface{}
-		if err := conn.ReadJSON(&msg); err != nil {
-			log.Println("read error:", err)
-
-			return
-		}
-
-		// subscribe ACK を検出
-		if msg["type"] == "subscribe" && msg["status"] == "ok" {
-			close(subscribed)
-		}
-	}
-}
-
-
-func startPing(conn *websocket.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if err := conn.WriteControl(
-			websocket.PingMessage,
-			[]byte{},
-			time.Now().Add(5*time.Second),
-		); err != nil {
-			log.Println("ping error:", err)
+	for t := range ticker.C {
+		for i := range boids {
+			UpdateBoid(&boids[i])
+			boids[i].Time = t.UnixMilli()
 
-			return
+			payload, err := json.Marshal(boids[i])
+			if err != nil {
+				log.Println("marshal error:", err)
+
+				continue
+			}
+
+			token := client.Publish(MQTTTopic, 0, false, payload)
+			token.Wait()
 		}
 	}
 }
 
-
+// Boidsの初期集団を生成
 func initBoids(r *rand.Rand) []Boid {
 	boids := make([]Boid, PopulationSize)
 	now   := time.Now().UnixMilli()
@@ -160,36 +100,7 @@ func initBoids(r *rand.Rand) []Boid {
 	return boids
 }
 
-
-func connectGrafanaLive() (*websocket.Conn, error) {
-	u, err := url.Parse(GrafanaURL)
-	if err != nil {
-		log.Println("Error parsing Grafana URL:", err)
-
-		return nil, err
-	}
-
-	switch u.Scheme {
-	case "http":
-		u.Scheme = "ws"
-	case "https":
-		u.Scheme = "wss"
-	}
-
-	u.Path = "/api/live/ws"
-
-	header := http.Header{}
-	header.Set("Authorization", "Bearer "+GrafanaToken)
-	header.Set("X-Grafana-Org-Id", "1")
-
-	log.Printf("Connecting to %s", u.String())
-	
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
-
-	return conn, err
-}
-
-
+// Boids Algorithm
 func UpdateBoid(b *Boid) {
 	b.X += b.Vx
 	b.Y += b.Vy
@@ -215,30 +126,4 @@ func UpdateBoid(b *Boid) {
 	}
 
 	b.Angle = math.Atan2(b.Vy, b.Vx) * 180 / math.Pi
-}
-
-
-func boidsToFramePayload(boids []Boid, ts int64) DataFrame {
-	values := make([][]interface{}, 0, len(boids))
-
-	for _, b := range boids {
-		values = append(values, []interface{}{
-			ts,
-			b.ID,
-			b.X,
-			b.Y,
-			b.Angle,
-		})
-	}
-
-	return DataFrame{
-		Fields: []FrameField{
-			{Name: "time", Type: "time"},
-			{Name: "id", Type: "string"},
-			{Name: "x", Type: "number"},
-			{Name: "y", Type: "number"},
-			{Name: "rotation", Type: "number"},
-		},
-		Values: values,
-	}
 }
