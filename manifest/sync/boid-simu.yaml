@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: boids-simulation
-          image: ghcr.io/cyokozai/grafana-nautilus-simu:7ecb24a8cf05181555624eb71e37e5d449f6acaa
+          image: ghcr.io/cyokozai/grafana-nautilus-simu:9ab87f5bb18147ca8adf4ecc79b63f0b0f0bbda2
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
