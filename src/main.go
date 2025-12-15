@@ -41,8 +41,8 @@ const	Margin         = 0.1
 const	TurnFactor     = 0.001
 const	SpeedLimit     = 0.2
 
-var	GrafanaURL   = os.Getenv("GRAFANA_URL")
-var	GrafanaToken = os.Getenv("GRAFANA_TOKEN")
+var	GrafanaURL   = os.Getenv("MQTT_BROKER")
+var	GrafanaToken = os.Getenv("MQTT_TOPIC")
 const Stream     = "stream/boids.v1.positions"
 
 

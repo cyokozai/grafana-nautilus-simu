@@ -22,6 +22,8 @@ releases:
               enabled: true
               allowed_origins: "*"
               max_connections: 0
+          plugins:
+            - grafana-mqtt-datasource
       - prometheusOperator:
           admissionWebhooks:
             enabled: false

@@ -2,21 +2,25 @@ package main
 
 import (
 	"encoding/json"
-	"time"
+	"fmt"
 	"log"
+	"os"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 
-const MQTTBroker string = "tcp://192.168.139.2:1883"
-const Topic      string = "boids/v1.positions"
+var MQTTBroker string = os.Getenv("MQTT_BROKER")
+var MQTTTopic  string = os.Getenv("MQTT_TOPIC")
+const ClientID string = "boids-simulator"
 
 
 func main() {
+	fmt.Println(MQTTBroker)
 	opts := mqtt.NewClientOptions().
 		AddBroker(MQTTBroker).
-		SetClientID(Topic)
+		SetClientID(MQTTTopic)
 
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
@@ -36,6 +40,6 @@ func main() {
 		}
 
 		b, _ := json.Marshal(msg)
-		client.Publish(Topic, 0, false, b)
+		client.Publish(MQTTTopic, 0, false, b)
 	}
 }
