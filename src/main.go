@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -82,7 +81,7 @@ func boidToLineProtocol(b *Boid) string {
 		b.Vx,
 		b.Vy,
 		b.Speed,
-		b.Time*1_000_000, // ms → ns
+		b.Time*1_000_000,
 	)
 }
 
