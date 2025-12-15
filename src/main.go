@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -59,28 +58,31 @@ func main() {
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-    ts := t.UnixMilli()
+		ts := t.UnixMilli()
 
-    for i := range boids {
+		for i := range boids {
 			UpdateBoid(&boids[i])
 			boids[i].Time = ts
 
-			payload, err := json.Marshal(boids[i])
-			if err != nil {
-				log.Println("json marshal error:", err)
-				
-				continue
-			}
-
-			client.Publish(
-				os.Getenv("MQTT_TOPIC"),
-				0,
-				false,
-				payload,
-			)
+			line := boidToLineProtocol(&boids[i])
+			client.Publish(MQTTTopic, 0, false, line)
 		}
 	}
+}
 
+// InfluxDB Line Protocol 変換
+func boidToLineProtocol(b *Boid) string {
+	return fmt.Sprintf(
+		"boids,id=%s x=%f,y=%f,rotation=%f,vx=%f,vy=%f,speed=%f %d",
+		b.ID,
+		b.X,
+		b.Y,
+		b.Angle,
+		b.Vx,
+		b.Vy,
+		b.Speed,
+		b.Time*1_000_000,
+	)
 }
 
 // Boidsの初期集団を生成
