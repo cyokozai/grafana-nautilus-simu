@@ -55,7 +55,7 @@ func main() {
 	random := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	boids  := initBoids(random)
 
-	ticker := time.NewTicker(10 * time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for t := range ticker.C {
